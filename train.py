@@ -1,5 +1,6 @@
 import argparse
 import os
+import math
 
 import pandas as pd
 import torch
@@ -22,7 +23,11 @@ def train(net, optim):
         inputs, labels = inputs.cuda(), labels.cuda()
         features, classes = net(inputs)
         class_loss = class_criterion(classes, labels)
+        if class_loss.isnan():
+            raise ValueError
         feature_loss = feature_criterion(features, labels)
+        if feature_loss.isnan():
+            raise ValueError
         loss = class_loss + feature_loss
         optim.zero_grad()
         loss.backward()
@@ -77,6 +82,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', default=128, type=int, help='train batch size')
     parser.add_argument('--num_epochs', default=20, type=int, help='train epoch number')
     parser.add_argument('--checkpoint', default='', type=str, help='resume from saved checkpoint')
+    parser.add_argument('--lr', default=1e-4, type=float, help='learning rate')
+    parser.add_argument('--workers', default=8, type=float, help='dataloader num_workers')
 
     opt = parser.parse_args()
     # args parse
@@ -85,6 +92,8 @@ if __name__ == '__main__':
     margin, recalls, batch_size = opt.margin, [int(k) for k in opt.recalls.split(',')], opt.batch_size
     num_epochs = opt.num_epochs
     prev_checkpoint_path = opt.checkpoint
+    learning_rate = opt.lr
+    num_workers = opt.workers
     save_name_pre = '{}_{}_{}_{}_{}_{}_{}_{}'.format(run_name, backbone_type, gd_config, feature_dim,
                                                         smoothing, temperature, margin, batch_size)
 
@@ -95,9 +104,9 @@ if __name__ == '__main__':
     # dataset loader
     train_data_set = ImageReader(os.path.join(data_path, "train"), 'train')
     train_sample = MPerClassSampler(train_data_set.labels, batch_size)
-    train_data_loader = DataLoader(train_data_set, batch_sampler=train_sample, num_workers=4)
+    train_data_loader = DataLoader(train_data_set, batch_sampler=train_sample, num_workers=num_workers)
     test_data_set = ImageReader(os.path.join(data_path, "test"), 'test')
-    test_data_loader = DataLoader(test_data_set, batch_size, shuffle=False, num_workers=4)
+    test_data_loader = DataLoader(test_data_set, batch_size, shuffle=False, num_workers=num_workers)
     eval_dict = {'test': {'data_loader': test_data_loader}}
 
     # model setup, model profile, optimizer config and loss definition
@@ -105,7 +114,7 @@ if __name__ == '__main__':
     flops, params = profile(model, inputs=(torch.randn(1, 3, 224, 224).cuda(),))
     flops, params = clever_format([flops, params])
     print('# Model Params: {} FLOPs: {}'.format(params, flops))
-    optimizer = Adam(model.parameters(), lr=1e-4)
+    optimizer = Adam(model.parameters(), lr=learning_rate)
     lr_scheduler = MultiStepLR(optimizer, milestones=[int(0.6 * num_epochs), int(0.8 * num_epochs)], gamma=0.1)
     class_criterion = LabelSmoothingCrossEntropyLoss(smoothing=smoothing, temperature=temperature)
     feature_criterion = BatchHardTripletLoss(margin=margin)
