@@ -76,6 +76,7 @@ if __name__ == '__main__':
     parser.add_argument('--recalls', default='1,2,4,8', type=str, help='selected recall')
     parser.add_argument('--batch_size', default=128, type=int, help='train batch size')
     parser.add_argument('--num_epochs', default=20, type=int, help='train epoch number')
+    parser.add_argument('--checkpoint', default='', type=str, help='resume from saved checkpoint')
 
     opt = parser.parse_args()
     # args parse
@@ -83,6 +84,7 @@ if __name__ == '__main__':
     gd_config, feature_dim, smoothing, temperature = opt.gd_config, opt.feature_dim, opt.smoothing, opt.temperature
     margin, recalls, batch_size = opt.margin, [int(k) for k in opt.recalls.split(',')], opt.batch_size
     num_epochs = opt.num_epochs
+    prev_checkpoint_path = opt.checkpoint
     save_name_pre = '{}_{}_{}_{}_{}_{}_{}_{}'.format(run_name, backbone_type, gd_config, feature_dim,
                                                         smoothing, temperature, margin, batch_size)
 
@@ -108,8 +110,19 @@ if __name__ == '__main__':
     class_criterion = LabelSmoothingCrossEntropyLoss(smoothing=smoothing, temperature=temperature)
     feature_criterion = BatchHardTripletLoss(margin=margin)
 
+    start_epoch = 1
+
+    # load checkpoint if given
+    if os.path.exists(prev_checkpoint_path):
+        checkpoint = torch.load(prev_checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        results = checkpoint['results']       
+        del checkpoint
+        
     best_recall = 0.0
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(start_epoch, num_epochs + 1):
         train_loss, train_accuracy = train(model, optimizer)
         results['train_loss'].append(train_loss)
         results['train_accuracy'].append(train_accuracy)
@@ -128,3 +141,11 @@ if __name__ == '__main__':
             data_base['test_features'] = eval_dict['test']['features']
             torch.save(model.state_dict(), 'results/{}_model.pth'.format(save_name_pre))
             torch.save(data_base, 'results/{}_data_base.pth'.format(save_name_pre))
+        
+        # save checkpoint
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'results': results,
+            }, 'results/{}_checkpoint.pth'.format(save_name_pre))
