@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 from PIL import Image
@@ -9,29 +10,58 @@ from torchvision import transforms
 
 
 class ImageReader(Dataset):
-
-    def __init__(self, data_path, data_name, data_type, crop_type):
-        if crop_type == 'cropped' and data_name not in ['car', 'cub']:
-            raise NotImplementedError('cropped data only works for car or cub dataset')
-
-        data_dict = torch.load('{}/{}/{}_data_dicts.pth'.format(data_path, data_name, crop_type))[data_type]
-        self.class_to_idx = dict(zip(sorted(data_dict), range(len(data_dict))))
+    def __init__(self, data_path, data_type):
+        self.img_dir = data_path
+        self.classes, self.images = self.__get_classes_and_images(self.img_dir)
+        self.labels = list(map(lambda x: x[0], self.images))
+        
         normalize = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         if data_type == 'train':
-            self.transform = transforms.Compose([transforms.Resize((252, 252)), transforms.RandomCrop(224),
-                                                 transforms.RandomHorizontalFlip(), transforms.ToTensor(), normalize])
+            self.transform = transforms.Compose([
+                transforms.Resize((252, 252)), 
+                transforms.RandomCrop(224),
+                #transforms.RandomHorizontalFlip(), 
+                transforms.ToTensor(), 
+                normalize
+            ])
         else:
-            self.transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(), normalize])
-        self.images, self.labels = [], []
-        for label, image_list in data_dict.items():
-            self.images += image_list
-            self.labels += [self.class_to_idx[label]] * len(image_list)
+            self.transform = transforms.Compose([
+                transforms.Resize((224, 224)), 
+                transforms.ToTensor(), 
+                normalize
+            ])
+        
+    def __get_class_imgs(self, class_dir, class_id):
+        imgs = []
+        for entry in os.scandir(class_dir):
+            if entry.is_dir():
+                continue  
+            img_path = entry.path
+            imgs.append((class_id, img_path)) 
+        return imgs
+
+    
+    def __get_classes_and_images(self, dir):
+        classes = dict()
+        imgs = []
+        class_id = 0
+        for entry in os.scandir(dir):
+            if not entry.is_dir():
+                continue     
+            class_dir = entry.path
+            class_name = entry.name
+            classes[class_id] = class_name
+            imgs = imgs + self.__get_class_imgs(class_dir, class_id)
+            class_id += 1
+        return classes, imgs
+
 
     def __getitem__(self, index):
-        path, target = self.images[index], self.labels[index]
+        target, path = self.images[index]
         img = Image.open(path).convert('RGB')
         img = self.transform(img)
         return img, target
+
 
     def __len__(self):
         return len(self.images)
