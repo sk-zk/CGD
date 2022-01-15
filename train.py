@@ -105,7 +105,7 @@ if __name__ == '__main__':
     train_data_set = ImageReader(os.path.join(data_path, "train"), 'train')
     train_sample = MPerClassSampler(train_data_set.labels, batch_size)
     train_data_loader = DataLoader(train_data_set, batch_sampler=train_sample, num_workers=num_workers)
-    test_data_set = ImageReader(os.path.join(data_path, "test"), 'test')
+    test_data_set = ImageReader(os.path.join(data_path, "val"), 'val')
     test_data_loader = DataLoader(test_data_set, batch_size, shuffle=False, num_workers=num_workers)
     eval_dict = {'test': {'data_loader': test_data_loader}}
 
