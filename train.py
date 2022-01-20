@@ -23,11 +23,11 @@ def train(net, optim):
         inputs, labels = inputs.cuda(), labels.cuda()
         features, classes = net(inputs)
         class_loss = class_criterion(classes, labels)
-        if class_loss.isnan():
+        if features.isnan().any():
+            raise ValueError
+        if classes.isnan().any():
             raise ValueError
         feature_loss = feature_criterion(features, labels)
-        if feature_loss.isnan():
-            raise ValueError
         loss = class_loss + feature_loss
         optim.zero_grad()
         loss.backward()
